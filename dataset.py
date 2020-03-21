@@ -136,13 +136,16 @@ class MyDataset(Dataset):
                 if not (phase =='train' and f in hp.train_words or phase == 'val' and f in hp.val_words or  phase == 'test' and f in hp.test_words):
                     continue
                     
-                self.list.append((path+'/'+person+'/'+f+'/view2',vid_labels[word]))
+                self.list.append((path+'/'+person+'/'+f,vid_labels[word]))
                 self.len+=1
 
     def __getitem__(self, idx):
         labels = self.list[idx][1]
         item_path = self.list[idx][0]
-        inputs, inputs_len  = load_file(item_path+'/embedding.npy',len(labels))
+        inputs, inputs_len  = load_file(item_path+'/freq_features.npy',len(labels))
+        assert not np.isnan(inputs).any(), "{}".format(sum(np.isnan(inputs)))
+        inputs = (inputs-np.mean(inputs, axis=0))/(np.std(inputs, axis=0) + 1e-5)
+        assert not np.isnan(inputs).any(), "{}".format(sum(np.isnan(inputs)))
         assert inputs_len>=len(labels), " input seq is shorter. total frames-{} for {}".format(inputs.shape[0],item_path)
         return inputs, inputs_len, labels, len(labels)
         
