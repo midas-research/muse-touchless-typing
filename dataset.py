@@ -5,6 +5,7 @@ import cv2
 import hp
 import os
 from torch.utils.data import Dataset
+import pickle
 
 #dictionary mapping words to list of cluster indexes.
 vid_labels = {
@@ -102,14 +103,6 @@ def load_file(filename,label_len):
         length: number of frames sampled 
     """
     embedding = np.load(filename)
-#     sample_frames = hp.sample_frames
-#     while(1):
-#         n_frames = (embedding.shape[0]-1)/sample_frames + 1
-#         if (embedding.shape[0]-1)%sample_frames!=0:
-#             n_frames += 1
-#         if n_frames>=label_len:
-#             break
-#         sample_frames-=1
         
     arr = []
     for i in range(0,embedding.shape[0],hp.sample_frames):
@@ -124,27 +117,63 @@ def load_file(filename,label_len):
     
     return arr, length
 
-class MyDataset(Dataset):
+def early_fuse_muse(video, muse, vidlen):
+    """
+    Concatenate single muse embedding for a sample to the embedding
+    of each video frame (already sampled).
+    
+    Arguments:
+        arr: Array of embeddings of sampled out video frames [shape: n x 198].
+        arr: Array of embedding of muse data for that sample [shape: 1 x 120].
+        Int: Length of the video (after sampling).
+    Returns:
+        arr: Combined embedding of muse and video ([shape: vidlen x 318])
+        Int: Length of the video (after sampling).
+    """
+    assert (muse.shape == (1, 120))
+    assert (video.shape[1] == 198)
 
+    muse = np.repeat(muse, vidlen, 0)
+    embedding = np.hstack((video, muse))
+    
+    return embedding, vidlen
+    
+class MyDataset(Dataset):
     def __init__(self, dataset,phase):
-        path = hp.data_path
+        stats_file = open(hp.stats, 'rb')
+        stats = pickle.load(stats_file)
+        self.mean = stats['mean']
+        self.std = stats['std']
+        muse_path = hp.data_path
+        video_path = hp.video_data_path
         self.list = []
         self.len  = 0
-        for person in dataset:
-            for f in sorted(os.listdir(path+'/'+person)):
-                word = file_to_word[f[:3]]
-                if not (phase =='train' and f in hp.train_words or phase == 'val' and f in hp.val_words or  phase == 'test' and f in hp.test_words):
+        users = hp.dataset_split[phase]
+        
+        for user in users:
+            #list of samples having both muse and video data
+            samples = list(set(os.listdir(os.path.join(muse_path, user))) & set(os.listdir(os.path.join(video_path, user))))
+            for sample in sorted(samples):
+                word = file_to_word[sample[:3]]
+                if not (phase =='train' and sample in hp.train_words or phase == 'val' and sample in hp.val_words or  phase == 'test' and sample in hp.test_words):
                     continue
-                    
-                self.list.append((path+'/'+person+'/'+f+'/view2',vid_labels[word]))
+                self.list.append((os.path.join(muse_path, user, sample), os.path.join(video_path, user, sample, 'view2'), vid_labels[word]))
                 self.len+=1
 
     def __getitem__(self, idx):
-        labels = self.list[idx][1]
-        item_path = self.list[idx][0]
-        inputs, inputs_len  = load_file(item_path+'/embedding.npy',len(labels))
-        assert inputs_len>=len(labels), " input seq is shorter. total frames-{} for {}".format(inputs.shape[0],item_path)
-        return inputs, inputs_len, labels, len(labels)
+        labels = self.list[idx][2]
+        muse_item_path = self.list[idx][0]
+        video_item_path = self.list[idx][1]
+        muse_embed = np.load(os.path.join(muse_item_path, hp.features+'.npy'))
+        #muse_embed = (muse_embed-self.mean)/(self.std + 1e-6)
+        
+        video_embed, video_len = load_file(os.path.join(video_item_path, 'embedding.npy'),len(labels))
+        embedding, embedding_len = early_fuse_muse(video_embed, muse_embed, video_len)
+#         assert not np.isnan(inputs).any(), "{}".format(sum(np.isnan(inputs)))
+        
+#         assert not np.isnan(inputs).any(), "{}".format(sum(np.isnan(inputs)))
+#         assert inputs_len>=len(labels), " input seq is shorter. total frames-{} for {}".format(inputs.shape[0],item_path)
+        return embedding, embedding_len, labels, len(labels)
         
     def __len__(self):
         return self.len

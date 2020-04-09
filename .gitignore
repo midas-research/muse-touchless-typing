@@ -1,6 +1,8 @@
 *.zip
 earlier_models
 model
+model_20
+model_last
 __pycache__
 *.pyc
 *.csv
