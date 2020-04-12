@@ -40,7 +40,7 @@ def logsumexp(*args):
                       for a in args))
   return a_max + lsp
 
-def decode(probs, trie, tseq, beam_size=50, blank=0):
+def decode(probs, trie, tseq, beam_size=hp.beam_width, blank=0):
   """
   Performs inference for the given output probabilities.
 

@@ -3,11 +3,11 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 import editdistance
-
+import hp
 
 class Decoder:
 
-    def __init__(self, labels, lm_path=None, alpha=1, beta=1.5, cutoff_top_n=40, cutoff_prob=0.99, beam_width=200, num_processes=24, blank_id=0):
+    def __init__(self, labels, lm_path=None, alpha=1, beta=1.5, cutoff_top_n=40, cutoff_prob=0.99, beam_width=hp.beam_width, num_processes=24, blank_id=0):
         self.vocab_list = ['_'] + labels # NOTE: blank symbol
         self._decoder = CTCBeamDecoder(['_'] + labels, lm_path, alpha, beta, cutoff_top_n, cutoff_prob, beam_width, num_processes, blank_id)
 

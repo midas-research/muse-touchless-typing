@@ -118,18 +118,6 @@ def load_file(filename,label_len):
     return arr, length
 
 def early_fuse_muse(video, muse, vidlen):
-    """
-    Concatenate single muse embedding for a sample to the embedding
-    of each video frame (already sampled).
-    
-    Arguments:
-        arr: Array of embeddings of sampled out video frames [shape: n x 198].
-        arr: Array of embedding of muse data for that sample [shape: 1 x 120].
-        Int: Length of the video (after sampling).
-    Returns:
-        arr: Combined embedding of muse and video ([shape: vidlen x 318])
-        Int: Length of the video (after sampling).
-    """
     assert (muse.shape == (1, 120))
     assert (video.shape[1] == 198)
 
@@ -151,7 +139,6 @@ class MyDataset(Dataset):
         users = hp.dataset_split[phase]
         
         for user in users:
-            #list of samples having both muse and video data
             samples = list(set(os.listdir(os.path.join(muse_path, user))) & set(os.listdir(os.path.join(video_path, user))))
             for sample in sorted(samples):
                 word = file_to_word[sample[:3]]

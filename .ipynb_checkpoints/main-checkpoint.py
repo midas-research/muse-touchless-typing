@@ -19,7 +19,7 @@ from dataset import *
 from lr_scheduler import *
 from utils import check_loss, convert_to_strings,check_sequences
 from dtw import dtw_batch
-from beam_search import ctc_beam_search
+from CTCDecoder import *
 
 SEED = 1
 torch.manual_seed(SEED)
@@ -141,7 +141,7 @@ def train_test(model, dset_loaders, criterion, epoch, phase, optimizer, args, lo
             inputs, targets = inputs.cuda(), targets.cuda()
         print ("max sec: {}".format(inputs.shape[1]))
         outputs, softmax_output = model(inputs.float(), ilen)
-        
+        print("debug: {}-{}".format(softmax_output.shape, outputs.shape))
         #loss calculation and checking numerical stability.
         loss = criterion(outputs, targets, ilen, tlen)
         loss_value = loss.item()
@@ -162,9 +162,8 @@ def train_test(model, dset_loaders, criterion, epoch, phase, optimizer, args, lo
             split_targ.append(targets[idx:idx+i])
             idx += i
         target_seq = convert_to_strings(split_targ)
-        decoded_seq = ctc_beam_search(softmax_output.cpu().detach().numpy(), ilen.cpu().numpy(),target_seq)
-        if hp.constrained_beam_search:
-            assert check_sequences(decoded_seq)==True, "decoded string not in lexicon"
+        decoder1 = Decoder(hp.dec_label)
+        decoded_seq = decoder1.decode_beam(softmax_output, ilen)
         avg_dtw = dtw_batch(decoded_seq,target_seq)
                     
         #print results for 1st sample in batch
@@ -240,13 +239,13 @@ def main(args, use_gpu):
         assert args.model_path is not None and len(args.model_path)>0, "provide correct model path."
         model = reload_model(model, logger, args.model_path)
         with torch.no_grad():
-            train_test(model, dset_loaders, criterion, epoch, 'test', optimizer, args, logger, use_gpu, save_path)
+            train_test(model, dset_loaders, criterion, 1, 'test', optimizer, args, logger, use_gpu, save_path)
         return
         
     #train, val and test
     best_acc, best_epoch = 0, -1
     for epoch in range(1,args.epochs+1):
-        if not args.no_scheduler:
+        if args.scheduler:
             scheduler.step(epoch)
         logger.info('-' * 10)
         logger.info('Epoch {}/{}'.format(epoch, args.epochs))
@@ -273,7 +272,7 @@ if __name__=='__main__':
     # Settings
     parser = argparse.ArgumentParser(description='Type your thoughts')
     parser.add_argument('--test', default=False, action='store_true', help='run test on a pretrained model')
-    parser.add_argument('--no_scheduler', default=False, action='store_true', help='not apply lr scheduler')
+    parser.add_argument('--scheduler', default=False, action='store_true', help='apply lr scheduler')
     parser.add_argument('--model_path', default=hp.model_path, help='path to model for testing')
     parser.add_argument('--desc', help='description of the run')
     parser.add_argument('--lr', default=hp.lr, help='initial learning rate')
@@ -284,7 +283,6 @@ if __name__=='__main__':
     parser.add_argument('--max-norm', default=hp.max_norm, type=int, help='Norm cutoff to prevent explosion of gradients')
     
     args = parser.parse_args()
-
     os.environ['CUDA_VISIBLE_DEVICES'] = str(hp.GPU)
     use_gpu = torch.cuda.is_available()
     if not use_gpu:

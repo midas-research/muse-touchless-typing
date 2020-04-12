@@ -88,7 +88,7 @@ file_to_word = {
 }
 
 
-def load_file(filename,label_len):
+def load_file(filename, m_embedding):
     """
     Load numpy file contained embedding of video frames and
     uniformly selecting every hp.sample_frames out of all frames.
@@ -102,41 +102,27 @@ def load_file(filename,label_len):
         arr: ([frames sampled , embedding_dim])
         length: number of frames sampled 
     """
-    embedding = np.load(filename)
-        
+    v_embedding = np.load(filename)
     arr = []
-    for i in range(0,embedding.shape[0],hp.sample_frames):
-        arr.append(embedding[i])
+    for i in range(0,v_embedding.shape[0],hp.sample_frames):
+        arr.append(v_embedding[i])
     
     #always include ending frame
-    if (embedding.shape[0]-1)%hp.sample_frames!=0:
-        arr.append(embedding[-1])
+    if (v_embedding.shape[0]-1)%hp.sample_frames!=0:
+        arr.append(v_embedding[-1])
     
-    length = len(arr)
-    arr = np.array(arr)               
+    v_embedding = np.array(arr)               
     
-    return arr, length
+    max_len = max(v_embedding.shape[0],m_embedding.shape[0])
+    embedding = np.zeros((max_len, v_embedding.shape[1]+m_embedding.shape[1]))
+    for i in range(v_embedding.shape[0]):
+                         embedding[i,:198] = v_embedding[i,:]
+    for i in range(m_embedding.shape[0]):
+                         embedding[i,198:] = m_embedding[i,:]
+    length = embedding.shape[0]
+    return embedding, length
 
-def early_fuse_muse(video, muse, vidlen):
-    """
-    Concatenate single muse embedding for a sample to the embedding
-    of each video frame (already sampled).
-    
-    Arguments:
-        arr: Array of embeddings of sampled out video frames [shape: n x 198].
-        arr: Array of embedding of muse data for that sample [shape: 1 x 120].
-        Int: Length of the video (after sampling).
-    Returns:
-        arr: Combined embedding of muse and video ([shape: vidlen x 318])
-        Int: Length of the video (after sampling).
-    """
-    assert (muse.shape == (1, 120))
-    assert (video.shape[1] == 198)
 
-    muse = np.repeat(muse, vidlen, 0)
-    embedding = np.hstack((video, muse))
-    
-    return embedding, vidlen
     
 class MyDataset(Dataset):
     def __init__(self, dataset,phase):
@@ -149,9 +135,7 @@ class MyDataset(Dataset):
         self.list = []
         self.len  = 0
         users = hp.dataset_split[phase]
-        
         for user in users:
-            #list of samples having both muse and video data
             samples = list(set(os.listdir(os.path.join(muse_path, user))) & set(os.listdir(os.path.join(video_path, user))))
             for sample in sorted(samples):
                 word = file_to_word[sample[:3]]
@@ -165,15 +149,10 @@ class MyDataset(Dataset):
         muse_item_path = self.list[idx][0]
         video_item_path = self.list[idx][1]
         muse_embed = np.load(os.path.join(muse_item_path, hp.features+'.npy'))
-        #muse_embed = (muse_embed-self.mean)/(self.std + 1e-6)
+#        muse_embed = (muse_embed-self.mean)/(self.std + 1e-9)
         
-        video_embed, video_len = load_file(os.path.join(video_item_path, 'embedding.npy'),len(labels))
-        embedding, embedding_len = early_fuse_muse(video_embed, muse_embed, video_len)
-#         assert not np.isnan(inputs).any(), "{}".format(sum(np.isnan(inputs)))
-        
-#         assert not np.isnan(inputs).any(), "{}".format(sum(np.isnan(inputs)))
-#         assert inputs_len>=len(labels), " input seq is shorter. total frames-{} for {}".format(inputs.shape[0],item_path)
-        return embedding, embedding_len, labels, len(labels)
+        embedding, e_len = load_file(os.path.join(video_item_path, 'embedding.npy'),muse_embed)
+        return embedding, e_len, labels, len(labels)
         
     def __len__(self):
         return self.len

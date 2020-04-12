@@ -19,7 +19,7 @@ from dataset import *
 from lr_scheduler import *
 from utils import check_loss, convert_to_strings,check_sequences
 from dtw import dtw_batch
-from beam_search import ctc_beam_search
+from CTCDecoder import *
 
 SEED = 1
 torch.manual_seed(SEED)
@@ -139,9 +139,10 @@ def train_test(model, dset_loaders, criterion, epoch, phase, optimizer, args, lo
     for batch_idx, (inputs, ilen, targets, tlen) in enumerate(dset_loaders[phase]):
         if use_gpu:
             inputs, targets = inputs.cuda(), targets.cuda()
+        print(torch.mean(inputs[:,:,198:]), torch.max(inputs[:,:,198:]),torch.min(inputs[:,:,198:]))
         print ("max sec: {}".format(inputs.shape[1]))
         outputs, softmax_output = model(inputs.float(), ilen)
-        
+        print("debug: {}-{}".format(softmax_output.shape, outputs.shape))
         #loss calculation and checking numerical stability.
         loss = criterion(outputs, targets, ilen, tlen)
         loss_value = loss.item()
@@ -162,14 +163,13 @@ def train_test(model, dset_loaders, criterion, epoch, phase, optimizer, args, lo
             split_targ.append(targets[idx:idx+i])
             idx += i
         target_seq = convert_to_strings(split_targ)
-        decoded_seq = ctc_beam_search(softmax_output.cpu().detach().numpy(), ilen.cpu().numpy(),target_seq)
-        if hp.constrained_beam_search:
-            assert check_sequences(decoded_seq)==True, "decoded string not in lexicon"
+        decoder1 = Decoder(hp.dec_label)
+        decoded_seq = decoder1.decode_beam(softmax_output, ilen)
         avg_dtw = dtw_batch(decoded_seq,target_seq)
                     
         #print results for 1st sample in batch
-        print('Original: ', target_seq[0])
-        print('Decoded: ', decoded_seq[0])
+        for i in range(len(target_seq)):
+            print('{} - original - {} | decoded - {}'.format(i+1,target_seq[i],decoded_seq[i]))
         
         running_acc += sum(p==t for p,t in zip(decoded_seq,target_seq))
         running_loss += loss_value * inputs.size(0)
@@ -284,7 +284,7 @@ if __name__=='__main__':
     parser.add_argument('--max-norm', default=hp.max_norm, type=int, help='Norm cutoff to prevent explosion of gradients')
     
     args = parser.parse_args()
-#    os.environ['CUDA_VISIBLE_DEVICES'] = str(hp.GPU)
+    os.environ['CUDA_VISIBLE_DEVICES'] = str(hp.GPU)
     use_gpu = torch.cuda.is_available()
     if not use_gpu:
         print ("no gpu,exiting")
@@ -292,8 +292,6 @@ if __name__=='__main__':
     if not os.path.exists(os.path.join('model',args.desc+'/')):
         os.mkdir('model/'+args.desc)
     shutil.copy('hp.py','model/'+args.desc+'/'+'parameters.txt')
-    if hp.constrained_beam_search:
-        print ("performing constrained beam search")
     main(args, use_gpu)
     shutil.move('model/'+args.desc+'.log','model/'+args.desc+'/'+'all_logs.log',)
 
