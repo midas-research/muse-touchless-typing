@@ -1,6 +1,10 @@
-*.zip
-earlier_models
-model
-__pycache__
-*.pyc
-*.csv
+proposed_method/*.zip
+proposed_method/earlier_models
+proposed_method/model
+proposed_method/__pycache__
+proposed_method/*.pyc
+proposed_method/*.csv
+headpose_estimation/snapshot/*
+headpose_estimation/code/.ipynb_checkpoints
+headpose_estimation/code/__pycache__
+
